@@ -10,6 +10,18 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+
+// -----------------------------------
+// 会話メモリ
+// -----------------------------------
+
+const memories = {};
+
+
+// -----------------------------------
+// Webhook
+// -----------------------------------
+
 export default async function handler(
   req,
   res
@@ -22,7 +34,9 @@ export default async function handler(
 
   // POST以外拒否
   if (req.method !== "POST") {
-    return res.status(405).send("Method Not Allowed");
+    return res
+      .status(405)
+      .send("Method Not Allowed");
   }
 
   try {
@@ -39,40 +53,94 @@ export default async function handler(
         continue;
       }
 
+      // -----------------------------------
+      // 発言内容
+      // -----------------------------------
+
       const userMessage =
         event.message.text;
 
+      // -----------------------------------
+      // 会話部屋ID
+      // -----------------------------------
+
+      const memoryKey =
+        event.source.groupId ||
+        event.source.roomId ||
+        event.source.userId;
+
+      // -----------------------------------
+      // メモリ初期化
+      // -----------------------------------
+
+      if (!memories[memoryKey]) {
+        memories[memoryKey] = [];
+      }
+
+      // -----------------------------------
+      // ユーザ発言保存
+      // -----------------------------------
+
+      memories[memoryKey].push({
+        role: "user",
+        content: userMessage
+      });
+
+      // -----------------------------------
+      // 直近10件だけ保持
+      // -----------------------------------
+
+      memories[memoryKey] =
+        memories[memoryKey].slice(-10);
+
+      // -----------------------------------
       // OpenAI
-      const response =
-        await openai.responses.create({
+      // -----------------------------------
+
+      const completion =
+        await openai.chat.completions.create({
+
           model: "gpt-4.1-mini",
 
-          instructions:
-            "あなたは親切なAIアシスタントです。" +
-            "日本語で簡潔に回答してください。",
+          messages: [
 
-          input: userMessage
+            {
+              role: "system",
+              content:
+                "あなたは親切なAIアシスタントです。" +
+                "日本語で自然に会話してください。"
+            },
+
+            ...memories[memoryKey]
+          ]
         });
 
-    //   const aiText =
-    //     response.output[0]
-    //       .content[0]
-    //       .text;
+      const aiText =
+        completion.choices[0]
+          .message.content;
 
-      const aiText = response.output_text;
+      // -----------------------------------
+      // AI返答保存
+      // -----------------------------------
 
-      console.log(aiText);
+      memories[memoryKey].push({
+        role: "assistant",
+        content: aiText
+      });
 
+      // -----------------------------------
       // LINE返信
+      // -----------------------------------
+
       await lineClient.replyMessage(
         event.replyToken,
         [
-            {
+          {
             type: "text",
             text: aiText
-            }
+          }
         ]
-        );
+      );
     }
 
     return res.status(200).send("OK");
