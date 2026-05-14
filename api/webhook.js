@@ -1,5 +1,10 @@
+// SDK V8用 LineBot
+// V9になるとReplyMessageなどの仕様が変わるので注意
+
 import { Client } from "@line/bot-sdk";
 import OpenAI from "openai";
+
+const MEMORY_NUM = 10; // 会話を保持する数
 
 const lineClient = new Client({
   channelAccessToken:
@@ -87,11 +92,11 @@ export default async function handler(
       });
 
       // -----------------------------------
-      // 直近10件だけ保持
+      // 直近n件だけ保持
       // -----------------------------------
 
       memories[memoryKey] =
-        memories[memoryKey].slice(-10);
+        memories[memoryKey].slice(-1 * MEMORY_NUM);
 
       // -----------------------------------
       // OpenAI
