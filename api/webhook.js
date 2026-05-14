@@ -64,17 +64,15 @@ export default async function handler(
       console.log(aiText);
 
       // LINE返信
-      await lineClient.replyMessage({
-        replyToken:
-          event.replyToken,
-
-        messages: [
-          {
+      await lineClient.replyMessage(
+        event.replyToken,
+        [
+            {
             type: "text",
             text: aiText
-          }
+            }
         ]
-      });
+        );
     }
 
     return res.status(200).send("OK");
