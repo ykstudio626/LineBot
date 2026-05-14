@@ -54,10 +54,12 @@ export default async function handler(
           input: userMessage
         });
 
-      const aiText =
-        response.output[0]
-          .content[0]
-          .text;
+    //   const aiText =
+    //     response.output[0]
+    //       .content[0]
+    //       .text;
+
+      const aiText = response.output_text;
 
       // LINE返信
       await lineClient.replyMessage({
