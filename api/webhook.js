@@ -61,6 +61,8 @@ export default async function handler(
 
       const aiText = response.output_text;
 
+      console.log(aiText);
+
       // LINE返信
       await lineClient.replyMessage({
         replyToken:
