@@ -2,8 +2,15 @@
   "name": "line-bot",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
   "dependencies": {
     "@line/bot-sdk": "^9.7.0",
     "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
   }
 }
