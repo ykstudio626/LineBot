@@ -26,6 +26,8 @@ const MENTION_ONLY: boolean = true;
 const MENTION_KEYWORDS = [
   "ぼっと",
   "ボット",
+  "b",
+  "B",
   "bot",
   "ai",
   "Takamaro",
@@ -163,7 +165,7 @@ export default async function handler(req: any, res: any): Promise<void> {
         {
           role: "system",
           content:
-            "あなたは親切なAIアシスタントです。日本語で自然に会話してください。"
+            "あなたは親切なAIアシスタントです。日本語で自然に会話してください。あなたは特に名前はありませんが、複数人チャットでは「ぼっと、ボット、AI、たかまろ、Takamaro」などでメンションされた場合に反応するようプログラムされています。"
         },
         {
           role: "system",
