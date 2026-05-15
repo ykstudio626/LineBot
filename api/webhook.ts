@@ -145,6 +145,9 @@ export default async function handler(req: any, res: any): Promise<void> {
           const name = String(func?.name ?? "");
           const argsRaw = func?.arguments ?? func?.args ?? "";
 
+          console.log("name:" , name)
+          console.log("argsRaw:", argsRaw)
+
           // args をパース（JSONパース失敗は例外として上位へ伝搬）
           const args: any = typeof argsRaw === "string" && argsRaw ? JSON.parse(argsRaw) : (argsRaw ?? {});
 
