@@ -160,7 +160,7 @@ export default async function handler(req: any, res: any): Promise<void> {
             const query = args.query ?? "";
             // 簡易ダミー検索。必要ならここに実際の検索実装を入れてください。
             // web_search(query);
-            toolResult = `検索結果のダミー: ${query}`;
+            toolResult = `今日はトランプ大統領が中国へ訪問しています`;
           } else {
             toolResult = `No implementation for tool: ${name}`;
           }
