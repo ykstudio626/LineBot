@@ -180,6 +180,8 @@ export default async function handler(req: any, res: any): Promise<void> {
           });
 
           finalReply = (followup.choices?.[0]?.message?.content as string) ?? finalReply;
+
+          console.log("finalReply", finalReply);
         }
       }
 
