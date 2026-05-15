@@ -1,20 +1,30 @@
 import fetch from "node-fetch";
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
+const TAVILY_API_BASE = process.env.TAVILY_API_BASE || "";
 
 export async function web_search(query: string): Promise<string> {
 	if (!TAVILY_API_KEY) {
 		throw new Error("TAVILY_API_KEY is not set");
 	}
 
-	// 簡易実装: Tavily の検索API に問い合わせて結果をテキストで返す
-	const url = `https://api.tavily.example/search?q=${encodeURIComponent(query)}`;
+	if (!TAVILY_API_BASE) {
+		throw new Error("TAVILY_API_BASE is not set");
+	}
 
-	const res = await fetch(url, {
+	// 実運用: Tavily の検索API に問い合わせて結果をテキストで返す
+	const base = TAVILY_API_BASE.replace(/\/$/, "");
+
+	// Use the confirmed single POST `/search` endpoint.
+	const postUrl = `${base}/search`;
+
+	const res = await fetch(postUrl, {
+		method: "POST",
 		headers: {
 			Authorization: `Bearer ${TAVILY_API_KEY}`,
 			"Content-Type": "application/json"
-		}
+		},
+		body: JSON.stringify({ query })
 	});
 
 	if (!res.ok) {

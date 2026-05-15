@@ -156,10 +156,42 @@ export default async function handler(req: any, res: any): Promise<void> {
           let toolResult: any;
 
 
-          // function_calling部分
+          // function_calling 部分
           if (name === "web_search") {
-            const query = args.query ?? "";
+            let query = args.query ?? "";
+
+            // クエリが「最新」「最近」「ニュース」など一般的な表現の場合、
+            // 検索に時点（年月日）を明示的に付与して最新性を担保する。
+            // 既に日付が含まれている場合はそのまま使用する。
             try {
+              const genericRe = /最新|最近|ニュース/;
+              const datePresentRe = /\d{4}年\s*\d{1,2}月\s*\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}/;
+
+              if (genericRe.test(query) && !datePresentRe.test(query)) {
+                const now = new Date();
+                // JSTに合わせる
+                const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+                const y = jst.getFullYear();
+                const m = jst.getMonth() + 1;
+                const d = jst.getDate();
+                const dateStr = `${y}年${m}月${d}日`;
+
+                // "最新のテックニュース" のようにトピックが含まれている場合は
+                // 日付を先頭に付けて "YYYY年M月D日の最新の<トピック>" とする。
+                // トピック情報がない（単に "最新" など）の場合は
+                // "YYYY年M月D日の最新のニュース" とする。
+                const cleaned = query.replace(/最新の|最近の|最新|最近/g, "").trim();
+
+                if (!cleaned || cleaned === "ニュース") {
+                  query = `${dateStr}の最新のニュース`;
+                } else {
+                  // 例: "最新のテックニュース" -> "2026年5月15日の最新のテックニュース"
+                  query = `${dateStr}の最新の${cleaned}`;
+                }
+
+                console.log("Normalized web_search query:", query);
+              }
+
               toolResult = await web_search(query);
             } catch (e: any) {
               toolResult = `web_search error: ${e?.message ?? String(e)}`;
