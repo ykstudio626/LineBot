@@ -155,11 +155,16 @@ export default async function handler(req: any, res: any): Promise<void> {
       // モデルに伝えるために日付を追加する。これによりモデルは「現在」が
       // いつかを参照でき、最新性が必要な問い合わせに強くなる。
       const now = new Date();
+      // JST（日本時間）に合わせて現在日時を取得
       const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
       const yyyy = jst.getFullYear();
       const mm = jst.getMonth() + 1;
       const dd = jst.getDate();
-      const dateSystemMessage = `現在は${yyyy}年${mm}月${dd}日です。`;
+      const hh = String(jst.getHours()).padStart(2, "0");
+      const min = String(jst.getMinutes()).padStart(2, "0");
+      const ss = String(jst.getSeconds()).padStart(2, "0");
+      // 日付と時刻（時分秒）を含め、明示的に日本時間であることを伝える
+      const dateSystemMessage = `現在は${yyyy}年${mm}月${dd}日 ${hh}時${min}分${ss}秒（日本時間）です。`;
 
       const messages: CreateChatCompletionRequestMessage[] = [
         {
