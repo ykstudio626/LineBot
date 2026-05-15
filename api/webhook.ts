@@ -148,8 +148,6 @@ export default async function handler(req: any, res: any): Promise<void> {
       // tool_calls（新）または function_call（旧）に対応
       const rawToolCalls = message?.tool_calls ?? (message?.function_call ? [message.function_call] : undefined);
 
-      console.log("rawToolCalls:" + rawToolCalls);
-
       let finalReply = aiText;
 
       if (rawToolCalls && rawToolCalls.length > 0) {
@@ -167,7 +165,6 @@ export default async function handler(req: any, res: any): Promise<void> {
 
           // 実際のツール実行（ここでは web_search を簡易実装）
           let toolResult: any;
-
 
           // function_calling 部分
           if (name === "web_search") {
@@ -212,6 +209,8 @@ export default async function handler(req: any, res: any): Promise<void> {
           } else {
             toolResult = `No implementation for tool: ${name}`;
           }
+
+          console.log("toolResult", toolResult)
 
           // モデルへ function の返答を渡して最終応答を取得
           const funcPrompt =
