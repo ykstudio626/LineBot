@@ -3,6 +3,7 @@
 
 import { Client } from "@line/bot-sdk";
 import OpenAI from "openai";
+import type { CreateChatCompletionRequestMessage } from "openai/resources/chat/completions/completions.js";
 
 const lineClient = new Client({
   channelAccessToken:
@@ -19,7 +20,11 @@ const MEMORY_NUM = 10; // 会話を保持する数
 // 会話メモリ
 // -----------------------------------
 
-type MessageRecord = { role: string; content: string };
+// メッセージ型（限定して安全に扱う）
+type MessageRecord = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
 
 const memories: Record<string, MessageRecord[]> = {};
 
@@ -100,39 +105,37 @@ export default async function handler(req: any, res: any): Promise<void> {
       // OpenAI
       // -----------------------------------
 
-      const completion = (await openai.chat.completions.create({
+      // メッセージを作成
+      const messages: CreateChatCompletionRequestMessage[] = [
+        {
+          role: "system",
+          content:
+            "あなたは親切なAIアシスタントです。" +
+            "日本語で自然に会話してください。"
+        },
+        ...memories[memoryKey].map((m) => ({
+          role: m.role,
+          content: m.content
+        }))
+      ];
 
+      // メッセージを送信
+      const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
+        messages
+      });
 
-        messages: [
-
-          {
-            role: "system",
-            content:
-              "あなたは親切なAIアシスタントです。" +
-              "日本語で自然に会話してください。"
-          },
-
-          ...(memories[memoryKey] as any)
-        ]
-      })) as any;
-
+      // AIからの回答
       const aiText: string =
         (completion.choices?.[0]?.message?.content as string) ?? "";
 
-      // -----------------------------------
       // AI返答保存
-      // -----------------------------------
-
       memories[memoryKey].push({
         role: "assistant",
         content: aiText
       });
 
-      // -----------------------------------
       // LINE返信
-      // -----------------------------------
-
       await lineClient.replyMessage(
         event.replyToken,
         [
