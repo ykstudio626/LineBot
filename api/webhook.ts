@@ -108,12 +108,25 @@ export default async function handler(req: any, res: any): Promise<void> {
       // -----------------------------------
 
       // メッセージを作成
+      // システムプロンプト（役割指定）のほか、現在の時刻（JST）を明示的に
+      // モデルに伝えるために日付を追加する。これによりモデルは「現在」が
+      // いつかを参照でき、最新性が必要な問い合わせに強くなる。
+      const now = new Date();
+      const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+      const yyyy = jst.getFullYear();
+      const mm = jst.getMonth() + 1;
+      const dd = jst.getDate();
+      const dateSystemMessage = `現在は${yyyy}年${mm}月${dd}日です。`;
+
       const messages: CreateChatCompletionRequestMessage[] = [
         {
           role: "system",
           content:
-            "あなたは親切なAIアシスタントです。" +
-            "日本語で自然に会話してください。"
+            "あなたは親切なAIアシスタントです。日本語で自然に会話してください。"
+        },
+        {
+          role: "system",
+          content: dateSystemMessage
         },
         ...memories[memoryKey].map((m) => ({
           role: m.role,
