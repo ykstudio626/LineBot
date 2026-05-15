@@ -163,8 +163,11 @@ export default async function handler(req: any, res: any): Promise<void> {
       const hh = String(jst.getHours()).padStart(2, "0");
       const min = String(jst.getMinutes()).padStart(2, "0");
       const ss = String(jst.getSeconds()).padStart(2, "0");
-      // 日付と時刻（時分秒）を含め、明示的に日本時間であることを伝える
-      const dateSystemMessage = `現在は${yyyy}年${mm}月${dd}日 ${hh}時${min}分${ss}秒（日本時間）です。`;
+      // 曜日を日本語で取得
+      const weekdays = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
+      const weekday = weekdays[jst.getDay()];
+      // 日付と時刻（時分秒）および曜日を含め、明示的に日本時間であることを伝える
+      const dateSystemMessage = `現在は${yyyy}年${mm}月${dd}日（${weekday}） ${hh}時${min}分${ss}秒（日本時間）です。`;
 
       const messages: CreateChatCompletionRequestMessage[] = [
         {
