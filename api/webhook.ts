@@ -5,6 +5,7 @@ import { Client } from "@line/bot-sdk";
 import OpenAI from "openai";
 import type { CreateChatCompletionRequestMessage } from "openai/resources/chat/completions/completions.js";
 import tools from "./tools.js";
+import { web_search } from "./functions.js";
 
 const lineClient = new Client({
   channelAccessToken:
@@ -158,27 +159,36 @@ export default async function handler(req: any, res: any): Promise<void> {
           // function_calling部分
           if (name === "web_search") {
             const query = args.query ?? "";
-            // 簡易ダミー検索。必要ならここに実際の検索実装を入れてください。
-            // web_search(query);
-            toolResult = `今日はトランプ大統領が中国へ訪問しています`;
+            try {
+              toolResult = await web_search(query);
+            } catch (e: any) {
+              toolResult = `web_search error: ${e?.message ?? String(e)}`;
+            }
           } else {
             toolResult = `No implementation for tool: ${name}`;
           }
 
           // モデルへ function の返答を渡して最終応答を取得
+          const funcPrompt =
+            "あなたは親切なAIアシスタントです。直前に与えられた関数の出力を参考にして、ユーザーの質問に対する最終回答を日本語で簡潔に作成してください。\n不確かな点は「不明です」と明示してください。出典URLがある場合はリンクとともに必ず明記してください。";
+
           const followupMessages = [
             ...messages,
+            { role: "system", content: funcPrompt } as any,
             {
               role: "function",
               name,
-              content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult) } as any
+              content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult)
+            } as any
           ];
 
+          // ツールの応答を埋め込んでAIに再送信
           const followup = await openai.chat.completions.create({
             model: "gpt-4.1-mini",
             messages: followupMessages
           });
 
+          // 最終応答を抽出
           finalReply = (followup.choices?.[0]?.message?.content as string) ?? finalReply;
 
           console.log("finalReply", finalReply);
