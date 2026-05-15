@@ -4,6 +4,7 @@
 import { Client } from "@line/bot-sdk";
 import OpenAI from "openai";
 import type { CreateChatCompletionRequestMessage } from "openai/resources/chat/completions/completions.js";
+import tools from "./tools";
 
 const lineClient = new Client({
   channelAccessToken:
@@ -122,29 +123,76 @@ export default async function handler(req: any, res: any): Promise<void> {
       // メッセージを送信
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
-        messages
+        messages,
+        functions: tools.map(t => t.function)
       });
 
-      // AIからの回答
-      const aiText: string =
-        (completion.choices?.[0]?.message?.content as string) ?? "";
+      // AIからの回答（初期）
+      const message = completion.choices?.[0]?.message;
+      const aiText: string = (message?.content as string) ?? "";
 
-      // AI返答保存
+      // tool_calls（新）または function_call（旧）に対応
+      const rawToolCalls = message?.tool_calls ?? (message?.function_call ? [message.function_call] : undefined);
+
+      console.log("rawToolCalls:" + rawToolCalls);
+
+      let finalReply = aiText;
+
+      if (rawToolCalls && rawToolCalls.length > 0) {
+        for (const call of rawToolCalls) {
+          // 呼び出し情報を正規化
+          const func = (((call as any).function) ?? (call as any)) as any;
+          const name = String(func?.name ?? "");
+          const argsRaw = func?.arguments ?? func?.args ?? "";
+
+          // args をパース（JSONパース失敗は例外として上位へ伝搬）
+          const args: any = typeof argsRaw === "string" && argsRaw ? JSON.parse(argsRaw) : (argsRaw ?? {});
+
+          // 実際のツール実行（ここでは web_search を簡易実装）
+          let toolResult: any;
+
+
+          // function_calling部分
+          if (name === "web_search") {
+            const query = args.query ?? "";
+            // 簡易ダミー検索。必要ならここに実際の検索実装を入れてください。
+            // web_search(query);
+            toolResult = `検索結果のダミー: ${query}`;
+          } else {
+            toolResult = `No implementation for tool: ${name}`;
+          }
+
+          // モデルへ function の返答を渡して最終応答を取得
+          const followupMessages = [
+            ...messages,
+            {
+              role: "function",
+              name,
+              content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult) } as any
+          ];
+
+          const followup = await openai.chat.completions.create({
+            model: "gpt-4.1-mini",
+            messages: followupMessages
+          });
+
+          finalReply = (followup.choices?.[0]?.message?.content as string) ?? finalReply;
+        }
+      }
+
+      // AI返答保存（最終）
       memories[memoryKey].push({
         role: "assistant",
-        content: aiText
+        content: finalReply
       });
 
-      // LINE返信
-      await lineClient.replyMessage(
-        event.replyToken,
-        [
-          {
-            type: "text",
-            text: aiText
-          }
-        ]
-      );
+      // LINE返信（最終）
+      await lineClient.replyMessage(event.replyToken, [
+        {
+          type: "text",
+          text: finalReply
+        }
+      ]);
     }
 
     res.status(200).send("OK");
