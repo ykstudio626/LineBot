@@ -4,7 +4,7 @@
 import { Client } from "@line/bot-sdk";
 import OpenAI from "openai";
 import type { CreateChatCompletionRequestMessage } from "openai/resources/chat/completions/completions.js";
-import tools from "./tools";
+import tools from "./tools.js";
 
 const lineClient = new Client({
   channelAccessToken:
