@@ -15,7 +15,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const MEMORY_NUM = 10; // 会話を保持する数
+const MEMORY_NUM = 20; // 会話を保持する数
 
 // -----------------------------------
 // 会話メモリ
