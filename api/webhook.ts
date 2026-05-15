@@ -18,6 +18,27 @@ const openai = new OpenAI({
 
 const MEMORY_NUM = 20; // 会話を保持する数
 
+// メンション限定モード: true の場合、以下の候補に含まれる単語がメッセージ内に
+// 含まれている場合のみボットが反応します。切り替えはこの定数を true/false で行ってください。
+const MENTION_ONLY: boolean = true;
+
+// 反応するメンション候補（ひらがな／カタカナ／英語表記など）
+const MENTION_KEYWORDS = [
+  "ぼっと",
+  "ボット",
+  "bot",
+  "ai",
+  "Takamaro",
+  "たかまろ",
+  "タカマロ"
+];
+
+// 正規表現用エスケープヘルパー
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+
 // -----------------------------------
 // 会話メモリ
 // -----------------------------------
@@ -66,7 +87,27 @@ export default async function handler(req: any, res: any): Promise<void> {
       // 発言内容
       // -----------------------------------
 
-      const userMessage: string = event.message.text;
+      let userMessage: string = event.message.text;
+
+      // メンション限定モードが有効な場合、指定キーワードを含まない発言は無視する。
+      if (MENTION_ONLY) {
+        const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
+        if (!mentionRegex.test(userMessage)) {
+          // メンションがないためこの発言には反応せずスキップ
+          console.log("Skipping non-mention message:", userMessage);
+          continue;
+        }
+
+        // メンション単語を取り除いてクリーンな本文だけを扱う
+        userMessage = userMessage.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
+        console.log("Message after removing mention tokens:", userMessage);
+
+        // メンション語を除去した結果、本文が空であれば処理を中断して次イベントへ。
+        if (!userMessage) {
+          console.log("Message empty after removing mention tokens; skipping.");
+          continue;
+        }
+      }
 
       // -----------------------------------
       // 会話部屋ID
