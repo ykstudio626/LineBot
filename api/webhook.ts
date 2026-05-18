@@ -1,4 +1,4 @@
-// SDK V8用 LineBot
+// SDK V8/V9用 LineBot
 // V9になるとReplyMessageなどの仕様が変わるので注意
 
 import { Client } from "@line/bot-sdk";
