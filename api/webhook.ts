@@ -128,6 +128,22 @@ export default async function handler(req: any, res: any): Promise<void> {
             continue;
           }
         }
+
+        // メンション付きリプライの場合、引用元メッセージが画像なら取得して解析対象にする
+        if (event.message.quotedMessageId) {
+          try {
+            const stream = await (lineClient as any).getMessageContent(event.message.quotedMessageId);
+            const chunks: Buffer[] = [];
+            for await (const chunk of stream as AsyncIterable<Buffer>) {
+              chunks.push(Buffer.from(chunk));
+            }
+            imageBuffer = Buffer.concat(chunks);
+            console.log("Retrieved quoted image for analysis");
+          } catch (e: any) {
+            // 画像以外のメッセージ or コンテンツ期限切れの場合は無視
+            console.log("Quoted message is not image or unavailable:", e?.message ?? e);
+          }
+        }
       } else {
         // 画像メッセージ処理: LINE からコンテンツを取得し Buffer に結合
         try {
