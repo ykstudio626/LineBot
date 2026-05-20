@@ -246,6 +246,14 @@ export default async function handler(req: any, res: any): Promise<void> {
         }))
       ];
 
+      // 画像がある場合、AIに image_analyze ツールを呼ぶよう指示する
+      if (imageBuffer) {
+        messages.push({
+          role: "system",
+          content: "ユーザーが画像を送信しています。必ず image_analyze ツールを呼び出して画像を解析し、その内容に基づいて回答してください。"
+        } as any);
+      }
+
       // メッセージを送信
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
