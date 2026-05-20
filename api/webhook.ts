@@ -77,37 +77,82 @@ export default async function handler(req: any, res: any): Promise<void> {
 
     for (const event of events) {
 
-      // テキスト以外無視
-      if (
-        event.type !== "message" ||
-        event.message?.type !== "text"
-      ) {
+      // テキストまたは画像以外は無視
+      if (event.type !== "message") {
+        continue;
+      }
+
+      const msgType = event.message?.type;
+      if (msgType !== "text" && msgType !== "image") {
         continue;
       }
 
       // -----------------------------------
-      // 発言内容
+      // 発言内容（テキスト or 画像）
       // -----------------------------------
 
-      let userMessage: string = event.message.text;
+      let userMessage: string = "";
+      let imageBuffer: Buffer | null = null;
 
-      // メンション限定モードが有効な場合、指定キーワードを含まない発言は無視する。
-      if (MENTION_ONLY) {
-        const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
-        if (!mentionRegex.test(userMessage)) {
-          // メンションがないためこの発言には反応せずスキップ
-          console.log("Skipping non-mention message:", userMessage);
+      if (msgType === "text") {
+        userMessage = event.message.text;
+
+        // 「退出」で始まるメッセージはメンション不要で即退出処理
+        if (userMessage.startsWith("退出")) {
+          const farewell = "ありがとうございました。またご利用お待ちしております！";
+          await lineClient.replyMessage(event.replyToken, [{ type: "text", text: farewell }]);
+          if (event.source?.groupId) {
+            await lineClient.leaveGroup(event.source.groupId);
+          } else if (event.source?.roomId) {
+            await lineClient.leaveRoom(event.source.roomId);
+          }
           continue;
         }
 
-        // メンション単語を取り除いてクリーンな本文だけを扱う
-        userMessage = userMessage.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
-        console.log("Message after removing mention tokens:", userMessage);
+        // メンション限定モードが有効な場合、指定キーワードを含まない発言は無視する。
+        if (MENTION_ONLY) {
+          const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
+          if (!mentionRegex.test(userMessage)) {
+            // メンションがないためこの発言には反応せずスキップ
+            console.log("Skipping non-mention text message:", userMessage);
+            continue;
+          }
 
-        // メンション語を除去した結果、本文が空であれば処理を中断して次イベントへ。
-        if (!userMessage) {
-          console.log("Message empty after removing mention tokens; skipping.");
+          // メンション単語を取り除いてクリーンな本文だけを扱う
+          userMessage = userMessage.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
+          console.log("Message after removing mention tokens:", userMessage);
+
+          // メンション語を除去した結果、本文が空であれば処理を中断して次イベントへ。
+          if (!userMessage) {
+            console.log("Message empty after removing mention tokens; skipping.");
+            continue;
+          }
+        }
+      } else {
+        // 画像メッセージ処理: LINE からコンテンツを取得し Buffer に結合
+        try {
+          const stream = await (lineClient as any).getMessageContent(event.message.id);
+          const chunks: Buffer[] = [];
+          for await (const chunk of stream as AsyncIterable<Buffer>) {
+            chunks.push(Buffer.from(chunk));
+          }
+          imageBuffer = Buffer.concat(chunks);
+        } catch (e: any) {
+          console.error("Failed to download image:", e?.message ?? e);
           continue;
+        }
+
+        // メンション限定モードが有効な場合、メッセージのテキスト部分でメンションを確認します。
+        // LINE の画像メッセージにテキストが同居していない場合は、メンションが必要なら別途トリガが必要です。
+        if (MENTION_ONLY) {
+          const captionText = event.message?.text ?? "";
+          const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
+          if (!mentionRegex.test(captionText)) {
+            console.log("Skipping non-mention image message");
+            continue;
+          }
+          // メンション語を取り除いたキャプションを userMessage として利用
+          userMessage = captionText.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
         }
       }
 
@@ -256,6 +301,45 @@ export default async function handler(req: any, res: any): Promise<void> {
               toolResult = await web_search(query);
             } catch (e: any) {
               toolResult = `web_search error: ${e?.message ?? String(e)}`;
+            }
+          } else if (name === "image_analyze") {
+            // image_analyze ツール呼び出し: バイナリを直接モデルに送るマルチモーダル処理
+            // 注意: 大きな画像を base64 埋め込みするのは非効率のため、実運用では
+            // マルチモーダル専用のアップロード/エンドポイントを使うことを推奨します。
+            const imgB64 = args.b64 ?? "";
+            if (!imgB64 && imageBuffer) {
+              // Buffer があれば base64 に変換して送る
+              try {
+                const b64 = imageBuffer.toString("base64");
+                // 簡易送信: モデルに画像を説明させるため、base64 を含むメッセージを投げる
+                const imgMessage = `以下は base64 エンコードされた画像です。画像の内容を説明し、主要なテキストや検出ラベルがあれば列挙してください。\ndata:image/jpeg;base64,${b64}`;
+                const resp = await openai.chat.completions.create({
+                  model: "gpt-4.1-mini",
+                  messages: [
+                    { role: "system", content: "画像解析を行ってください。日本語で簡潔に出力してください。" },
+                    { role: "user", content: imgMessage }
+                  ]
+                });
+                toolResult = (resp.choices?.[0]?.message?.content as string) ?? "";
+              } catch (e: any) {
+                toolResult = `image_analyze error: ${e?.message ?? String(e)}`;
+              }
+            } else if (imgB64) {
+              try {
+                const imgMessage = `以下は base64 エンコードされた画像です。画像の内容を説明し、主要なテキストや検出ラベルがあれば列挙してください。\ndata:image/jpeg;base64,${imgB64}`;
+                const resp = await openai.chat.completions.create({
+                  model: "gpt-4.1-mini",
+                  messages: [
+                    { role: "system", content: "画像解析を行ってください。日本語で簡潔に出力してください。" },
+                    { role: "user", content: imgMessage }
+                  ]
+                });
+                toolResult = (resp.choices?.[0]?.message?.content as string) ?? "";
+              } catch (e: any) {
+                toolResult = `image_analyze error: ${e?.message ?? String(e)}`;
+              }
+            } else {
+              toolResult = "image_analyze: no image provided";
             }
           } else {
             toolResult = `No implementation for tool: ${name}`;
