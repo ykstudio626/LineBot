@@ -246,155 +246,127 @@ export default async function handler(req: any, res: any): Promise<void> {
         }))
       ];
 
-      // 画像がある場合、AIに image_analyze ツールを呼ぶよう指示する
+      let finalReply: string;
+
       if (imageBuffer) {
-        messages.push({
-          role: "system",
-          content: "ユーザーが画像を送信しています。必ず image_analyze ツールを呼び出して画像を解析し、その内容に基づいて回答してください。"
-        } as any);
-      }
+        // -----------------------------------
+        // 画像パス: Vision API を直接使用
+        // -----------------------------------
+        console.log("[image] size:", imageBuffer.byteLength, "bytes");
+        const b64 = imageBuffer.toString("base64");
+        const visionResp = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          messages: [
+            {
+              role: "system",
+              content: "あなたは親切なAIアシスタントです。日本語で回答してください。"
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: userMessage || "この画像について教えてください。"
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:image/jpeg;base64,${b64}` }
+                }
+              ] as any
+            }
+          ]
+        });
+        finalReply = (visionResp.choices?.[0]?.message?.content as string) ?? "";
+        console.log("[image] reply:", finalReply.slice(0, 100));
 
-      // メッセージを送信
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
-        messages,
-        functions: tools.map(t => t.function)
-      });
+      } else {
+        // -----------------------------------
+        // テキストパス: function calling
+        // -----------------------------------
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          messages,
+          functions: tools.map(t => t.function)
+        });
 
-      // AIからの回答（初期）
-      const message = completion.choices?.[0]?.message;
-      const aiText: string = (message?.content as string) ?? "";
+        const message = completion.choices?.[0]?.message;
+        const aiText: string = (message?.content as string) ?? "";
 
-      // tool_calls（新）または function_call（旧）に対応
-      const rawToolCalls = message?.tool_calls ?? (message?.function_call ? [message.function_call] : undefined);
+        // tool_calls（新）または function_call（旧）に対応
+        const rawToolCalls = message?.tool_calls ?? (message?.function_call ? [message.function_call] : undefined);
 
-      let finalReply = aiText;
+        finalReply = aiText;
 
-      if (rawToolCalls && rawToolCalls.length > 0) {
-        for (const call of rawToolCalls) {
-          // 呼び出し情報を正規化
-          const func = (((call as any).function) ?? (call as any)) as any;
-          const name = String(func?.name ?? "");
-          const argsRaw = func?.arguments ?? func?.args ?? "";
+        if (rawToolCalls && rawToolCalls.length > 0) {
+          for (const call of rawToolCalls) {
+            const func = (((call as any).function) ?? (call as any)) as any;
+            const name = String(func?.name ?? "");
+            const argsRaw = func?.arguments ?? func?.args ?? "";
 
-          console.log("name:" , name)
-          console.log("argsRaw:", argsRaw)
+            console.log("name:", name);
+            console.log("argsRaw:", argsRaw);
 
-          // args をパース（JSONパース失敗は例外として上位へ伝搬）
-          const args: any = typeof argsRaw === "string" && argsRaw ? JSON.parse(argsRaw) : (argsRaw ?? {});
+            const args: any = typeof argsRaw === "string" && argsRaw ? JSON.parse(argsRaw) : (argsRaw ?? {});
 
-          // 実際のツール実行（ここでは web_search を簡易実装）
-          let toolResult: any;
+            let toolResult: any;
 
-          // function_calling 部分
-          if (name === "web_search") {
-            let query = args.query ?? "";
+            if (name === "web_search") {
+              let query = args.query ?? "";
 
-            // クエリが「最新」「最近」「ニュース」など一般的な表現の場合、
-            // 検索に時点（年月日）を明示的に付与して最新性を担保する。
-            // 既に日付が含まれている場合はそのまま使用する。
-            try {
-              const genericRe = /最新|最近|ニュース/;
-              const datePresentRe = /\d{4}年\s*\d{1,2}月\s*\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}/;
+              try {
+                const genericRe = /最新|最近|ニュース/;
+                const datePresentRe = /\d{4}年\s*\d{1,2}月\s*\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}/;
 
-              if (genericRe.test(query) && !datePresentRe.test(query)) {
-                const now = new Date();
-                // JSTに合わせる
-                const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-                const y = jst.getFullYear();
-                const m = jst.getMonth() + 1;
-                const d = jst.getDate();
-                const dateStr = `${y}年${m}月${d}日`;
+                if (genericRe.test(query) && !datePresentRe.test(query)) {
+                  const now = new Date();
+                  const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+                  const y = jst.getFullYear();
+                  const m = jst.getMonth() + 1;
+                  const d = jst.getDate();
+                  const dateStr = `${y}年${m}月${d}日`;
+                  const cleaned = query.replace(/最新の|最近の|最新|最近/g, "").trim();
 
-                // "最新のテックニュース" のようにトピックが含まれている場合は
-                // 日付を先頭に付けて "YYYY年M月D日の最新の<トピック>" とする。
-                // トピック情報がない（単に "最新" など）の場合は
-                // "YYYY年M月D日の最新のニュース" とする。
-                const cleaned = query.replace(/最新の|最近の|最新|最近/g, "").trim();
+                  if (!cleaned || cleaned === "ニュース") {
+                    query = `${dateStr}の最新のニュース`;
+                  } else {
+                    query = `${dateStr}の最新の${cleaned}`;
+                  }
 
-                if (!cleaned || cleaned === "ニュース") {
-                  query = `${dateStr}の最新のニュース`;
-                } else {
-                  // 例: "最新のテックニュース" -> "2026年5月15日の最新のテックニュース"
-                  query = `${dateStr}の最新の${cleaned}`;
+                  console.log("Normalized web_search query:", query);
                 }
 
-                console.log("Normalized web_search query:", query);
-              }
-
-              toolResult = await web_search(query);
-            } catch (e: any) {
-              toolResult = `web_search error: ${e?.message ?? String(e)}`;
-            }
-          } else if (name === "image_analyze") {
-            // image_analyze ツール呼び出し: バイナリを直接モデルに送るマルチモーダル処理
-            // 注意: 大きな画像を base64 埋め込みするのは非効率のため、実運用では
-            // マルチモーダル専用のアップロード/エンドポイントを使うことを推奨します。
-            const imgB64 = args.b64 ?? "";
-            if (!imgB64 && imageBuffer) {
-              // Buffer があれば base64 に変換して送る
-              try {
-                const b64 = imageBuffer.toString("base64");
-                // 簡易送信: モデルに画像を説明させるため、base64 を含むメッセージを投げる
-                const imgMessage = `以下は base64 エンコードされた画像です。画像の内容を説明し、主要なテキストや検出ラベルがあれば列挙してください。\ndata:image/jpeg;base64,${b64}`;
-                const resp = await openai.chat.completions.create({
-                  model: "gpt-4.1-mini",
-                  messages: [
-                    { role: "system", content: "画像解析を行ってください。日本語で簡潔に出力してください。" },
-                    { role: "user", content: imgMessage }
-                  ]
-                });
-                toolResult = (resp.choices?.[0]?.message?.content as string) ?? "";
+                toolResult = await web_search(query);
               } catch (e: any) {
-                toolResult = `image_analyze error: ${e?.message ?? String(e)}`;
-              }
-            } else if (imgB64) {
-              try {
-                const imgMessage = `以下は base64 エンコードされた画像です。画像の内容を説明し、主要なテキストや検出ラベルがあれば列挙してください。\ndata:image/jpeg;base64,${imgB64}`;
-                const resp = await openai.chat.completions.create({
-                  model: "gpt-4.1-mini",
-                  messages: [
-                    { role: "system", content: "画像解析を行ってください。日本語で簡潔に出力してください。" },
-                    { role: "user", content: imgMessage }
-                  ]
-                });
-                toolResult = (resp.choices?.[0]?.message?.content as string) ?? "";
-              } catch (e: any) {
-                toolResult = `image_analyze error: ${e?.message ?? String(e)}`;
+                toolResult = `web_search error: ${e?.message ?? String(e)}`;
               }
             } else {
-              toolResult = "image_analyze: no image provided";
+              toolResult = `No implementation for tool: ${name}`;
             }
-          } else {
-            toolResult = `No implementation for tool: ${name}`;
+
+            console.log("toolResult", toolResult);
+
+            const funcPrompt =
+              "あなたは親切なAIアシスタントです。直前に与えられた関数の出力を参考にして、ユーザーの質問に対する最終回答を日本語で簡潔に作成してください。\n不確かな点は「不明です」と明示してください。出典URLがある場合はリンクとともに必ず明記してください。";
+
+            const followupMessages = [
+              ...messages,
+              { role: "system", content: funcPrompt } as any,
+              {
+                role: "function",
+                name,
+                content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult)
+              } as any
+            ];
+
+            const followup = await openai.chat.completions.create({
+              model: "gpt-4.1-mini",
+              messages: followupMessages
+            });
+
+            finalReply = (followup.choices?.[0]?.message?.content as string) ?? finalReply;
+
+            console.log("finalReply", finalReply);
           }
-
-          console.log("toolResult", toolResult)
-
-          // モデルへ function の返答を渡して最終応答を取得
-          const funcPrompt =
-            "あなたは親切なAIアシスタントです。直前に与えられた関数の出力を参考にして、ユーザーの質問に対する最終回答を日本語で簡潔に作成してください。\n不確かな点は「不明です」と明示してください。出典URLがある場合はリンクとともに必ず明記してください。";
-
-          const followupMessages = [
-            ...messages,
-            { role: "system", content: funcPrompt } as any,
-            {
-              role: "function",
-              name,
-              content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult)
-            } as any
-          ];
-
-          // ツールの応答を埋め込んでAIに再送信
-          const followup = await openai.chat.completions.create({
-            model: "gpt-4.1-mini",
-            messages: followupMessages
-          });
-
-          // 最終応答を抽出
-          finalReply = (followup.choices?.[0]?.message?.content as string) ?? finalReply;
-
-          console.log("finalReply", finalReply);
         }
       }
 
