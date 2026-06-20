@@ -111,14 +111,14 @@ export default async function handler(req: any, res: any): Promise<void> {
 
         // メンション限定モードが有効な場合、指定キーワードを含まない発言は無視する。
         if (MENTION_ONLY) {
-          const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
+          const mentionRegex = new RegExp("[@＠](?:" + MENTION_KEYWORDS.map(escapeRegExp).join("|") + ")", "gi");
           if (!mentionRegex.test(userMessage)) {
             // メンションがないためこの発言には反応せずスキップ
             console.log("Skipping non-mention text message:", userMessage);
             continue;
           }
 
-          // メンション単語を取り除いてクリーンな本文だけを扱う
+          // メンション単語（@付き）を取り除いてクリーンな本文だけを扱う
           userMessage = userMessage.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
           console.log("Message after removing mention tokens:", userMessage);
 
@@ -162,12 +162,12 @@ export default async function handler(req: any, res: any): Promise<void> {
         // LINE の画像メッセージにテキストが同居していない場合は、メンションが必要なら別途トリガが必要です。
         if (MENTION_ONLY) {
           const captionText = event.message?.text ?? "";
-          const mentionRegex = new RegExp(MENTION_KEYWORDS.map(escapeRegExp).join("|"), "gi");
+          const mentionRegex = new RegExp("[@＠](?:" + MENTION_KEYWORDS.map(escapeRegExp).join("|") + ")", "gi");
           if (!mentionRegex.test(captionText)) {
             console.log("Skipping non-mention image message");
             continue;
           }
-          // メンション語を取り除いたキャプションを userMessage として利用
+          // メンション語（@付き）を取り除いたキャプションを userMessage として利用
           userMessage = captionText.replace(mentionRegex, "").replace(/\s+/g, " ").trim();
         }
       }
