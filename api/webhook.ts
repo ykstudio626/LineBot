@@ -97,27 +97,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       if (msgType === "text") {
         userMessage = event.message.text;
 
-        // 「退出」で始まるメッセージはメンション不要で即退出処理
-        if (userMessage.startsWith("退出")) {
-          const farewell = "ありがとうございました。またご利用お待ちしております！";
-          await lineClient.replyMessage(event.replyToken, [{ type: "text", text: farewell }]);
-          try {
-            if (event.source?.groupId) {
-              await lineClient.leaveGroup(event.source.groupId);
-              console.log("Left group:", event.source.groupId);
-            } else if (event.source?.roomId) {
-              await lineClient.leaveRoom(event.source.roomId);
-              console.log("Left room:", event.source.roomId);
-            } else {
-              console.log("Leave skipped: no groupId or roomId in source");
-            }
-          } catch (leaveErr: any) {
-            console.error("Failed to leave:", leaveErr?.message ?? leaveErr);
-          }
-          continue;
-        }
-
-        // メンション限定モードが有効な場合、指定キーワードを含まない発言は無視する。
+        // メンション限定モードが有効な場合、まずメンションを検出・除去する
         if (MENTION_ONLY) {
           const mentionRegex = new RegExp("[@＠](?:" + MENTION_KEYWORDS.map(escapeRegExp).join("|") + ")", "gi");
           if (!mentionRegex.test(userMessage)) {
@@ -135,6 +115,26 @@ export default async function handler(req: any, res: any): Promise<void> {
             console.log("Message empty after removing mention tokens; skipping.");
             continue;
           }
+        }
+
+        // 「退出」で始まるメッセージは即退出処理（メンション除去後にチェック）
+        if (userMessage.startsWith("退出")) {
+          const farewell = "ありがとうございました。またご利用お待ちしております！";
+          await lineClient.replyMessage(event.replyToken, [{ type: "text", text: farewell }]);
+          try {
+            if (event.source?.groupId) {
+              await lineClient.leaveGroup(event.source.groupId);
+              console.log("Left group:", event.source.groupId);
+            } else if (event.source?.roomId) {
+              await lineClient.leaveRoom(event.source.roomId);
+              console.log("Left room:", event.source.roomId);
+            } else {
+              console.log("Leave skipped: no groupId or roomId in source");
+            }
+          } catch (leaveErr: any) {
+            console.error("Failed to leave:", leaveErr?.message ?? leaveErr);
+          }
+          continue;
         }
 
         // メンション付きリプライの場合、引用元メッセージが画像なら取得して解析対象にする
